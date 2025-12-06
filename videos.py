@@ -11,7 +11,7 @@ def solve():
         return
 
     input_file = sys.argv[1]
-    print(f"--- Démarrage (Mode Performance Ultra) ---")
+    print(f"--- Démarrage du programme ---")
     print(f"Lecture du fichier : {input_file}")
 
     # --- 2. LECTURE ET PARSING ---
@@ -61,7 +61,7 @@ def solve():
     print("Analyse des paires utiles...")
     useful_pairs = set()
     
-    # Pour le Warm Start Global
+    # Pour garder en mémoire les gains possibles
     pair_gains = {}
 
     for req in requests:
@@ -93,18 +93,18 @@ def solve():
         model.Params.MIPGap = 0.005
         model.Params.LogFile = ""
         
-        # Adaptation du temps selon la taille du problème
-        # Si c'est le gros fichier (beaucoup de requêtes), on donne 10 minutes (600s)
+        # Adaptation simple du temps
         if R > 10000:
-            print("Gros dataset détecté : Passage à 10 minutes (600s).")
+            print("Gros fichier détecté : on laisse 10 minutes.")
             model.Params.TimeLimit = 600
         else:
-            print("Petit dataset : TimeLimit standard (300s).")
+            print("Petit fichier : 5 minutes max.")
             model.Params.TimeLimit = 300
         
-        model.Params.MIPFocus = 1      # Focus: Trouver des solutions (Feasibility)
-        model.Params.Cuts = 3          # Coupes agressives
-        model.Params.Presolve = 2      # Presolve agressif
+        # Paramètres pour trouver des solutions rapidement
+        model.Params.MIPFocus = 1      # Se concentrer sur la recherche de solutions réalisables
+        model.Params.Cuts = 3          # Utiliser beaucoup de coupes pour aider le solveur
+        model.Params.Presolve = 2      # Simplifier le modèle avant de résoudre
         model.Params.ProjImpliedCuts = 2 
         
         print("Construction du modèle...")
@@ -114,8 +114,8 @@ def solve():
         for (c, v) in useful_pairs:
             y[c, v] = model.addVar(vtype=GRB.BINARY, name=f"y_{c}_{v}")
 
-        # --- 4b. WARM START GLOBAL (SMART GREEDY) ---
-        print("Calcul de l'heuristique globale (Smart Greedy)...")
+        # --- 4b. SOLUTION INITIALE (Glouton) ---
+        print("On essaie de trouver une première solution simple...")
         
         candidates_list = []
         for (c, v), total_gain in pair_gains.items():
@@ -127,11 +127,13 @@ def solve():
                 'size': video_sizes[v]
             })
             
+        # On trie par densité (gain / taille)
         candidates_list.sort(key=lambda x: x['density'], reverse=True)
         
         cache_usage = [0] * C
         count_start = 0
         
+        # On remplit les caches avec les meilleures vidéos
         for item in candidates_list:
             c = item['c']
             v = item['v']
@@ -143,7 +145,7 @@ def solve():
                     cache_usage[c] += s
                     count_start += 1
         
-        print(f"Solution initiale injectée : {count_start} vidéos placées.")
+        print(f"Solution de départ trouvée avec {count_start} vidéos.")
 
         # -- Objectif & Contraintes --
         obj_expr = gp.LinExpr()
@@ -187,11 +189,6 @@ def solve():
             print(f"--- Résultat Final ---")
             print(f"Score (Temps économisé) : {int(model.ObjVal)}")
             print(f"Gap Final : {model.MIPGap * 100:.4f}%")
-            
-            # Message rassurant pour l'étudiant
-            if model.MIPGap > 0.005 and R > 10000:
-                print("(Note : Sur le gros dataset 'trending', un Gap élevé est normal car")
-                print("la borne théorique de Gurobi est surestimée. Votre Score est excellent.)")
                 
             generate_output_file(y, C, V, "videos.out")
         else:
