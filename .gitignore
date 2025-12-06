@@ -1,0 +1,6 @@
+videos.out
+videos.mps
+__pycache__/
+*.pyc
+.env
+.generated
